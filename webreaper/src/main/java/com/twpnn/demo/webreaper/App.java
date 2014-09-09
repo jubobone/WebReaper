@@ -1,47 +1,40 @@
 package com.twpnn.demo.webreaper;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
+import net.sf.jxls.exception.ParsePropertyException;
 import net.sf.jxls.transformer.XLSTransformer;
 
 import org.apache.log4j.Logger;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.jsoup.nodes.Document;
 
 import com.twpnn.demo.webreaper.core.UrlFileDownloader;
+import com.twpnn.demo.webreaper.core.UrlSorting;
 import com.twpnn.demo.webreaper.model.DownloadContent;
 
-
-/**
- * Example program to list links from a URL.
- */
 public class App {
 	
-	private static final String homepageUrl = "http://www.ba.no";
-	private static final String downloadDirectory = App.class.getProtectionDomain().getCodeSource().getLocation().getPath() + "download";
-	private static String templateFileName = "report/template.xls";
-    private static String destFileName = "report/result.xls";
+	private static String homepageUrl;
+	private static String downloadDirectory;
+	private static String templateFileName;
+    private static String destFileName;
 
 	private static final Logger logger = Logger.getLogger(App.class);
 	
-	public static void main(String[] args) throws Exception {
+	
+	public static void main(String[] args) {
 
-		/*1st step 
-		 * fetch all urls and links from the target url via jsoup
-		 * in String format
-		 * for example, "www.abc.no/ffffdes.js,script"
+		loadSystemConfiguration();		
+		/* 
+		 * 1st : download main page and get its document objects which will be use for fetching its links and scripts later
 		 * */
 		UrlFileDownloader downloadMgr = new UrlFileDownloader(homepageUrl, downloadDirectory);
 		Document targetUrlDocument= downloadMgr.getUrlDocument(homepageUrl);
@@ -51,26 +44,15 @@ public class App {
 		mainDownloadLst.add(mainPageDownloadContent);
 		// download a main page
 		logger.info("download main page time : " + mainPageDownloadContent.getTime());
-		
 		// response status
 		logger.info("response status code : " + mainPageDownloadContent.getStatus());
 		
 		/*
-		 * 2nd step
-		 * download each of them and measuring the download time and
-		 * print the list of download links with the following categories
-		 * - download complete
-		 * - incomplete
-		 * 
+		 * 2nd : download main page's links and scripts. 
 		 * */
 		List<DownloadContent> completeDownloadLst = downloadMgr.getUrlDownloadContents(targetUrlDocument);
 		
-		Collections.sort(completeDownloadLst, new Comparator<DownloadContent>() {
-	        @Override public int compare(DownloadContent d1, DownloadContent d2) {
-	        	return Double.compare(d1.getTime(), d2.getTime());
-	        }
-
-	    });
+		completeDownloadLst = UrlSorting.sort(completeDownloadLst);
 		
 		logger.info("######### Result ( "+ completeDownloadLst.size()+ " )##############");
 		
@@ -78,8 +60,8 @@ public class App {
 		
 		Iterator<DownloadContent> i = completeDownloadLst.iterator();
 		while (i.hasNext()) {
-			DownloadContent dw = i.next(); // must be called before you can call i.remove()
-			if(dw.getTime() < 0){
+			DownloadContent dw = i.next(); 
+			if(null == dw.getTime()){
 				incompleteDownloadLst.add(dw);
 				i.remove();
 			}else {
@@ -90,19 +72,62 @@ public class App {
 		
 		logger.info("######### Not complete ( "+ incompleteDownloadLst.size()+ " ) ##############");
 		for(DownloadContent inDw : incompleteDownloadLst)
-			System.out.println("<" + inDw.getType().toString() + "> : " + inDw.getName() + " , cannot download; " + inDw.getErrorMsg());
+			logger.info("<" + inDw.getType().toString() + "> : " + inDw.getName() + " , cannot download; " + inDw.getErrorMsg());
 		
 		/*
-		 * step 3 
-		 * create spreadsheet or excel file show the result of file download
-		 * 
+		 * 3rd : create spreadsheet or excel file show the result of download
 		 * */
+		List<List<DownloadContent>> allDownloadContentLst = new ArrayList<List<DownloadContent>>();
+		allDownloadContentLst.add(mainDownloadLst);
+		allDownloadContentLst.add(completeDownloadLst);
+		allDownloadContentLst.add(incompleteDownloadLst);
+		createSpreadSheetReport(allDownloadContentLst);
+	}
+	
+	private static void loadSystemConfiguration(){
+		Properties prop = new Properties();
+		InputStream input = null;
+		try {
+			input = App.class.getClassLoader().getResourceAsStream("config.properties");
+			prop.load(input);
+			homepageUrl = prop.getProperty("main_url");
+			if (!homepageUrl.startsWith("http://")){
+				if(!homepageUrl.startsWith("https://")){
+					homepageUrl = "http://" + homepageUrl;
+				}
+			}
+				
+			downloadDirectory = prop.getProperty("download_folder");
+			templateFileName = prop.getProperty("report_template");
+			destFileName = prop.getProperty("report_output");
+	 
+		} catch (IOException e) {
+			logger.error(e.getMessage());
+		} finally {
+			if (input != null) {
+				try {
+					input.close();
+				} catch (IOException e) {
+					logger.error(e.getMessage());
+				}
+			}
+		}
+	}
+
+	private static void createSpreadSheetReport(List<List<DownloadContent>> allDownloadContentLst){
 		Map<String, List<DownloadContent>> maps = new HashMap<String, List<DownloadContent>>();
-	    maps.put("main", mainDownloadLst);
-	    maps.put("complete", completeDownloadLst);
-	    maps.put("incomplete", incompleteDownloadLst);
+	    maps.put("main", allDownloadContentLst.get(0));
+	    maps.put("complete", allDownloadContentLst.get(1));
+	    maps.put("incomplete", allDownloadContentLst.get(2));
 	    XLSTransformer transformer = new XLSTransformer();
-		transformer.transformXLS(templateFileName, maps, destFileName);
-		
+		try {
+			transformer.transformXLS(templateFileName, maps, destFileName);
+		} catch (ParsePropertyException e) {
+			logger.error(e.getMessage());
+		} catch (InvalidFormatException e) {
+			logger.error(e.getMessage());
+		} catch (IOException e) {
+			logger.error(e.getMessage());
+		}
 	}
 }

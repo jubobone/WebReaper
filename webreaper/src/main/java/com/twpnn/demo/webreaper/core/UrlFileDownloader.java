@@ -68,43 +68,43 @@ public class UrlFileDownloader {
 		Elements imports = document.select("link[href]");
 		Elements pages = document.select("a[href]");
 
-		report("\nTotal Media: (%d)", media.size());
+		logOutputFormat("\nTotal Media: (%d)", media.size());
 		DownloadContent downloadContent = null;
 		for (Element src : media) {
 			downloadContent = downloadFile(src.absUrl("src"), ContentType.MEDIA);
 			if(null != downloadContent) {
 				if (src.tagName().equals("img")) {
-					report(" * %s: <%s> %sx%s (%s) , %.3f%n", src.tagName(),	src.attr("abs:src"), src.attr("width"), src.attr("height"), trim(src.attr("alt"), 20),	downloadContent.getTime());
+					logOutputFormat(" * %s: <%s> %sx%s (%s) , %.3f%n", src.tagName(),	src.attr("abs:src"), src.attr("width"), src.attr("height"), trim(src.attr("alt"), 20),	downloadContent.getTime());
 				} else {
-					report(" * %s: <%s> , %.3f%n ", src.tagName(), src.attr("abs:src"), downloadContent.getTime());
+					logOutputFormat(" * %s: <%s> , %.3f%n ", src.tagName(), src.attr("abs:src"), downloadContent.getTime());
 				}
 			} else {
-				report("%s: <%s>", "There is a problem downloading file : ", src.attr("abs:src"));
+				logOutputFormat("%s: <%s>", "There is a problem downloading file : ", src.attr("abs:src"));
 				downloadContent = new DownloadContent();
 				downloadContent.setErrorMsg("Cannot download file from this URL");
 			}
 			downloadLst.add(downloadContent);
 		}
 
-		report("\nTotal Imports: (%d)", imports.size());
+		logOutputFormat("\nTotal Imports: (%d)", imports.size());
 		for (Element link : imports) {
 			downloadContent = downloadFile(link.attr("abs:href"), ContentType.IMPORT);
 			if(null != downloadContent) {
-				report(" * %s <%s> (%s)", link.tagName(), link.attr("abs:href"), link.attr("rel"));
+				logOutputFormat(" * %s <%s> (%s)", link.tagName(), link.attr("abs:href"), link.attr("rel"));
 			} else {
-				report("%s: <%s>", "There is a problem downloading file : ", link.attr("abs:href"));
+				logOutputFormat("%s: <%s>", "There is a problem downloading file : ", link.attr("abs:href"));
 				downloadContent = new DownloadContent();
 				downloadContent.setErrorMsg("Cannot download file from this URL");
 			}
 			downloadLst.add(downloadContent);
 		}
 
-		report("\nTotal Pages: (%d)", pages.size());
+		logOutputFormat("\nTotal Pages: (%d)", pages.size());
 		for (Element page : pages) {
 			//response = getConnectionResponse(link.attr("abs:href"));
 			downloadContent = downloadFile(page.attr("abs:href"), ContentType.PAGE);
 			if(null != downloadContent ){
-				report(" * a: <%s>  (%s)", page.attr("abs:href"), trim(page.text(), 35));
+				logOutputFormat(" * a: <%s>  (%s)", page.attr("abs:href"), trim(page.text(), 35));
 			} else {
 				downloadContent = new DownloadContent();
 				downloadContent.setTime(-1.00);
@@ -122,7 +122,7 @@ public class UrlFileDownloader {
 		Double totalTime = null;
 
 		// check whether directory is existing or not
-		File file = new File(downloadDirectory + "/" + type);
+		File file = new File(prepareDirectory(type));
 		if (!file.exists())
 			file.mkdirs();
 
@@ -165,17 +165,19 @@ public class UrlFileDownloader {
 			downloadContent.setName(url);
 			downloadContent.setType(type);
 			downloadContent.setStatus(responseCode);
-			downloadContent.setTime(-1.00); // avoid null pointer exception and remove from sorting by downloading time
 			downloadContent.setErrorMsg("caused by, " + e.getMessage());
 		}
 
 		return downloadContent;
 	}
 
-	private static void report(String msg, Object... args) {
-		logger.info(String.format(msg, args));
+	private String prepareDirectory(ContentType type){
+		if(type == ContentType.MAIN)
+			return downloadDirectory + "/";
+		else 
+			return downloadDirectory + "/" + type;
 	}
-
+	
 	private String trimFileName(String url, ContentType type){
 		String filename = null;
 		if (type == ContentType.MAIN) {
@@ -204,4 +206,7 @@ public class UrlFileDownloader {
 			return s;
 	}
 
+	private static void logOutputFormat(String msg, Object... args) {
+		logger.info(String.format(msg, args));
+	}
 }
